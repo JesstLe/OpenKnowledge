@@ -6,13 +6,16 @@ import { Message } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Send } from 'lucide-react';
+import { Send, BookOpen } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [useRAG, setUseRAG] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { openaiApiKey, model } = useSettingsStore();
 
@@ -43,13 +46,15 @@ export default function ChatPage() {
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://localhost:8000/api/chat', {
+      const endpoint = useRAG ? '/api/chat/rag' : '/api/chat';
+      const response = await fetch(`http://localhost:8000${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: userMessage.content,
           apiKey: openaiApiKey,
           model,
+          use_rag: useRAG,
         }),
       });
 
@@ -97,7 +102,20 @@ export default function ChatPage() {
   return (
     <div className="flex flex-col h-screen">
       <div className="border-b p-4">
-        <h1 className="text-xl font-semibold">Chat</h1>
+        <div className="flex justify-between items-center max-w-3xl mx-auto">
+          <h1 className="text-xl font-semibold">Chat</h1>
+          <div className="flex items-center gap-2">
+            <BookOpen className="h-4 w-4 text-muted-foreground" />
+            <Label htmlFor="rag-mode" className="text-sm cursor-pointer">
+              Use Knowledge Base
+            </Label>
+            <Switch
+              id="rag-mode"
+              checked={useRAG}
+              onCheckedChange={setUseRAG}
+            />
+          </div>
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto p-4 space-y-4 max-w-3xl mx-auto w-full">
         {messages.map((message) => (
