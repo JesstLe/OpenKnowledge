@@ -47,5 +47,19 @@ class Message(Base):
     role = Column(String(20))
     content = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
-    
+
     conversation = relationship("Conversation", back_populates="messages")
+
+class Memory(Base):
+    __tablename__ = "memories"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    content = Column(Text, nullable=False)
+    category = Column(String(50), default="fact")  # fact, preference, goal, important
+    importance = Column(Integer, default=5)  # 1-10 scale
+    source = Column(String(255))  # e.g., "extracted from conversation"
+    embedding = Column(VECTOR(1536))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    access_count = Column(Integer, default=0)
+    last_accessed = Column(DateTime)

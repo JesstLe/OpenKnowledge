@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 from api.chat import router as chat_router
 from api.documents import router as documents_router
+from api.memories import router as memories_router
 from core.database import init_db
 
 @asynccontextmanager
@@ -25,6 +26,7 @@ app.add_middleware(
 
 app.include_router(chat_router)
 app.include_router(documents_router)
+app.include_router(memories_router)
 
 @app.get("/")
 async def root():

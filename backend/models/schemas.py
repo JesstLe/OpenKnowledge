@@ -28,6 +28,26 @@ class SearchResult(BaseModel):
 class RAGChatRequest(BaseModel):
     message: str
     use_rag: bool = True
+    use_memory: bool = True
     conversationId: Optional[str] = None
     apiKey: str
     model: str = "gpt-3.5-turbo"
+
+# Memory schemas
+class MemoryCreate(BaseModel):
+    content: str
+    category: str = "fact"  # preference, fact, goal, important
+    importance: int = 5  # 1-10
+
+class MemoryUpdate(BaseModel):
+    content: Optional[str] = None
+    importance: Optional[int] = None
+
+class MemoryResponse(BaseModel):
+    id: str
+    content: str
+    category: str
+    importance: int
+    source: str
+    created_at: datetime
+    access_count: int
