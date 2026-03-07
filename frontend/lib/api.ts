@@ -1,4 +1,5 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+export const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 export interface ChatRequest {
   message: string;
@@ -8,17 +9,19 @@ export interface ChatRequest {
 }
 
 export const chatApi = {
-  sendMessage: async (data: ChatRequest): Promise<ReadableStream<Uint8Array>> => {
+  sendMessage: async (
+    data: ChatRequest,
+  ): Promise<ReadableStream<Uint8Array>> => {
     const response = await fetch(`${API_BASE_URL}/api/chat`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify(data),
     });
 
     if (!response.body) {
-      throw new Error('No response body');
+      throw new Error("No response body");
     }
 
     return response.body;

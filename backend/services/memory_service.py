@@ -39,7 +39,7 @@ class MemoryService:
     ) -> List[Memory]:
         """Extract important information from conversation"""
         from langchain_openai import ChatOpenAI
-        from langchain.schema import HumanMessage, SystemMessage
+        from langchain_core.messages import HumanMessage, SystemMessage
         import json
         
         llm = ChatOpenAI(api_key=api_key, model="gpt-3.5-turbo", temperature=0.3)
@@ -111,5 +111,66 @@ Return JSON array: [{"content": "...", "category": "preference|fact|goal", "impo
         
         context_parts = [f"- {m.content}" for m in memories]
         return "Relevant information:\n" + "\n".join(context_parts)
+    
+    async def list_memories(
+        self,
+        session: AsyncSession,
+        category: Optional[str] = None,
+        limit: int = 50
+    ) -> List[Memory]:
+        """List all memories with optional category filter"""
+        query = select(Memory)
+        
+        if category:
+            query = query.where(Memory.category == category)
+        
+        query = query.order_by(Memory.importance.desc(), Memory.created_at.desc()).limit(limit)
+        
+        result = await session.execute(query)
+        return result.scalars().all()
+    
+    async def update_memory(
+        self,
+        memory_id: str,
+        session: AsyncSession,
+        content: Optional[str] = None,
+        importance: Optional[int] = None
+    ) -> Optional[Memory]:
+        """Update a memory"""
+        from uuid import UUID
+        
+        result = await session.execute(
+            select(Memory).where(Memory.id == UUID(memory_id))
+        )
+        memory = result.scalar_one_or_none()
+        
+        if not memory:
+            return None
+        
+        if content is not None:
+            memory.content = content
+        if importance is not None:
+            memory.importance = importance
+        
+        memory.updated_at = datetime.utcnow()
+        await session.commit()
+        await session.refresh(memory)
+        return memory
+    
+    async def delete_memory(self, memory_id: str, session: AsyncSession) -> bool:
+        """Delete a memory"""
+        from uuid import UUID
+        
+        result = await session.execute(
+            select(Memory).where(Memory.id == UUID(memory_id))
+        )
+        memory = result.scalar_one_or_none()
+        
+        if not memory:
+            return False
+        
+        await session.delete(memory)
+        await session.commit()
+        return True
 
 memory_service = MemoryService()

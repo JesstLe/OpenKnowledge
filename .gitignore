@@ -9,7 +9,7 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
-node_modules/
+
 
 # testing
 /coverage
@@ -40,3 +40,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# monorepo generated artifacts
+frontend/.next/
+frontend/node_modules/
+backend/**/__pycache__/
+backend/**/*.pyc

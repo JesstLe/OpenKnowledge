@@ -1,0 +1,9 @@
+{
+    "name": "browser-automation-skill",
+    "version": "1.0.0",
+    "description": "Playwright helper scripts for AI browser debugging skill",
+    "type": "module",
+    "dependencies": {
+        "playwright": "^1.42.1"
+    }
+}
