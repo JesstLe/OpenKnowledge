@@ -26,7 +26,7 @@ class DocumentChunk(Base):
     document_id = Column(UUID(as_uuid=True), ForeignKey("documents.id"))
     content = Column(Text)
     chunk_index = Column(Integer)
-    embedding = Column(Vector(4096))
+    embedding = Column(Vector)
     
     document = relationship("Document", back_populates="chunks")
 
@@ -67,7 +67,7 @@ class Memory(Base):
     category = Column(String(50), default="fact")
     importance = Column(Integer, default=5)
     source = Column(String(255))
-    embedding = Column(Vector(4096))
+    embedding = Column(Vector)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     access_count = Column(Integer, default=0)
