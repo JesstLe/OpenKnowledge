@@ -235,10 +235,10 @@ export default function ChatPage() {
         body: JSON.stringify(
           useRAG
             ? {
-                ...requestBody,
-                use_rag: useRAG,
-                use_memory: useMemory,
-              }
+              ...requestBody,
+              use_rag: useRAG,
+              use_memory: useMemory,
+            }
             : requestBody,
         ),
       });
@@ -323,9 +323,8 @@ export default function ChatPage() {
     <div className="flex h-screen bg-background">
       {/* Sidebar */}
       <aside
-        className={`${
-          sidebarOpen ? "w-72" : "w-0"
-        } bg-[#f9f9f9] dark:bg-[#0d0d0d] border-r border-gray-200 dark:border-gray-800 transition-all duration-300 overflow-hidden flex flex-col`}
+        className={`${sidebarOpen ? "w-72" : "w-0"
+          } bg-[#f9f9f9] dark:bg-[#0d0d0d] border-r border-gray-200 dark:border-gray-800 transition-all duration-300 overflow-hidden flex flex-col`}
       >
         {/* New Chat Button */}
         <div className="p-4">
@@ -381,11 +380,10 @@ export default function ChatPage() {
             <div className="space-y-0.5">
               <button
                 onClick={() => setUseRAG(!useRAG)}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all cursor-pointer w-full ${
-                  useRAG
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all cursor-pointer w-full ${useRAG
                     ? "bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400"
                     : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
-                }`}
+                  }`}
               >
                 <BookOpen className="h-4 w-4" />
                 <span className="flex-1 text-left">知识库 RAG</span>
@@ -395,11 +393,10 @@ export default function ChatPage() {
               </button>
               <button
                 onClick={() => setUseMemory(!useMemory)}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all cursor-pointer w-full ${
-                  useMemory
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all cursor-pointer w-full ${useMemory
                     ? "bg-purple-50 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400"
                     : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
-                }`}
+                  }`}
               >
                 <Brain className="h-4 w-4" />
                 <span className="flex-1 text-left">长期记忆</span>
@@ -420,11 +417,10 @@ export default function ChatPage() {
                 <button
                   key={chat.id}
                   onClick={() => loadConversation(chat.id)}
-                  className={`flex items-start gap-3 px-3 py-2.5 rounded-lg text-sm transition-all cursor-pointer w-full text-left group ${
-                    currentConversationId === chat.id
+                  className={`flex items-start gap-3 px-3 py-2.5 rounded-lg text-sm transition-all cursor-pointer w-full text-left group ${currentConversationId === chat.id
                       ? "bg-white dark:bg-gray-800 shadow-sm border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100"
                       : "text-gray-600 dark:text-gray-400 hover:bg-gray-100/80 dark:hover:bg-gray-800/50"
-                  }`}
+                    }`}
                 >
                   <MessageSquare className="h-4 w-4 shrink-0 mt-0.5 text-gray-400" />
                   <div className="flex-1 min-w-0">
@@ -484,15 +480,35 @@ export default function ChatPage() {
               }
             }}
           >
-            <SelectTrigger className="w-[320px] text-sm border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-600 transition-colors">
-              <SelectValue placeholder="选择模型" />
+            <SelectTrigger className="w-[280px] text-sm border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-600 transition-colors">
+              <SelectValue placeholder="选择模型">
+                {currentModel && (
+                  <div className="flex items-center gap-2 truncate">
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      {currentModel.name}
+                    </span>
+                    <span className="text-gray-500 text-xs truncate">
+                      {
+                        PROVIDERS.find((p) => p.id === currentModel.provider)
+                          ?.name
+                      }
+                    </span>
+                  </div>
+                )}
+              </SelectValue>
             </SelectTrigger>
-            <SelectContent className="max-h-[500px] w-[320px]">
+            <SelectContent className="max-h-[500px] w-[360px]">
               {SUPPORTED_MODELS.map((m) => (
-                <SelectItem key={m.id} value={m.id} className="py-3">
-                  <div className="flex flex-col items-start gap-1">
-                    <span className="font-medium text-sm">{m.name}</span>
-                    <span className="text-xs text-gray-500 leading-relaxed">
+                <SelectItem
+                  key={m.id}
+                  value={m.id}
+                  className="py-3 h-auto whitespace-normal"
+                >
+                  <div className="flex flex-col items-start gap-1 w-full max-w-[360px]">
+                    <span className="font-medium text-sm truncate w-full">
+                      {m.name}
+                    </span>
+                    <span className="text-xs text-gray-500 leading-relaxed break-words w-full">
                       {PROVIDERS.find((p) => p.id === m.provider)?.name} ·{" "}
                       {m.description}
                     </span>
@@ -536,33 +552,29 @@ export default function ChatPage() {
               {messages.map((message) => (
                 <div
                   key={message.id}
-                  className={`flex gap-4 ${
-                    message.role === "user" ? "flex-row-reverse" : ""
-                  }`}
+                  className={`flex gap-4 ${message.role === "user" ? "flex-row-reverse" : ""
+                    }`}
                 >
                   {/* Avatar */}
                   <div
-                    className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium ${
-                      message.role === "user"
+                    className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium ${message.role === "user"
                         ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900"
                         : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700"
-                    }`}
+                      }`}
                   >
                     {message.role === "user" ? "U" : "AI"}
                   </div>
 
                   {/* Content */}
                   <div
-                    className={`flex-1 ${
-                      message.role === "user" ? "text-right" : ""
-                    }`}
+                    className={`flex-1 ${message.role === "user" ? "text-right" : ""
+                      }`}
                   >
                     <div
-                      className={`inline-block text-left max-w-[85%] px-4 py-3 rounded-2xl ${
-                        message.role === "user"
+                      className={`inline-block text-left max-w-[85%] px-4 py-3 rounded-2xl ${message.role === "user"
                           ? "bg-gray-900 dark:bg-blue-600 text-white rounded-br-md"
                           : "bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-100 dark:border-gray-700 rounded-bl-md shadow-sm"
-                      }`}
+                        }`}
                     >
                       <p className="whitespace-pre-wrap leading-relaxed">
                         {message.content}
@@ -655,11 +667,10 @@ export default function ChatPage() {
                 <button
                   onClick={handleSend}
                   disabled={!input.trim() || isLoading}
-                  className={`p-2.5 rounded-xl transition-all ${
-                    input.trim() && !isLoading
+                  className={`p-2.5 rounded-xl transition-all ${input.trim() && !isLoading
                       ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:opacity-90"
                       : "bg-gray-100 dark:bg-gray-800 text-gray-400"
-                  }`}
+                    }`}
                 >
                   <ArrowUp className="h-4 w-4" />
                 </button>

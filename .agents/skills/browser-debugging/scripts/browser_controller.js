@@ -26,8 +26,15 @@ async function main() {
     const browser = await chromium.launch({ headless: true });
     const context = await browser.newContext({
         viewport: { width: 1280, height: 800 },
-        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/121.0.0.0 Safari/537.36'
+        userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/121.0.0.0 Safari/537.36',
+        recordVideo: {
+            dir: path.join(__dirname, 'videos'),
+            size: { width: 1280, height: 800 }
+        }
     });
+
+    // 开启详细动作追踪
+    await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
     const page = await context.newPage();
 
     try {
@@ -98,6 +105,10 @@ async function main() {
         console.error(`❌ 操作失败: ${error.message}`);
     } finally {
         if (browser.isConnected()) {
+            // 保存高级调试 Trace
+            const tracePath = path.join(__dirname, `trace_${action}_${Date.now()}.zip`);
+            console.log(`📦 保存交互流迹文件 (Trace) 至: ${tracePath}`);
+            await context.tracing.stop({ path: tracePath });
             await browser.close();
         }
     }
