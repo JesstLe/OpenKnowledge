@@ -152,18 +152,25 @@ class LLMService:
         # Add memory context if enabled
         if use_memory and session:
             memory_context = await memory_service.get_memory_context(
-                message, api_key, session, limit=5
+                message, api_key, session, limit=5, provider=provider, base_url=base_url
             )
             if memory_context:
                 context_parts.append(memory_context)
 
         # Add RAG context if enabled
         if use_rag and session:
-            rag_context = await rag_service.get_context_for_query(
-                message, api_key, session
-            )
-            if rag_context:
-                context_parts.append("Relevant documents:\n" + rag_context)
+            # Determine embedding provider from model
+            embedding_provider = get_provider_from_model(model)
+            # Only these providers support embeddings
+            if embedding_provider in ["openai", "alibaba", "zhipu", "moonshot"]:
+                rag_context = await rag_service.get_context_for_query(
+                    message, api_key, session, provider=embedding_provider, base_url=base_url
+                )
+                if rag_context:
+                    context_parts.append("Relevant documents:\n" + rag_context)
+            else:
+                # Fallback to openai if current provider doesn't support embeddings
+                print(f"Provider {embedding_provider} doesn't support embeddings, skipping RAG")
 
         # Build system prompt with context
         if context_parts:

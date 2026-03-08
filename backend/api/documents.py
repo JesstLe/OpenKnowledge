@@ -16,19 +16,23 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 @router.post("/upload")
 async def upload_document(
     file: UploadFile = File(...),
-    api_key: str = "",  # Pass API key in header in production
+    api_key: str = "",
+    provider: str = "openai",
+    base_url: str = "",
+    use_local_embedding: bool = False,
     session: AsyncSession = Depends(get_session)
 ):
     """Upload and process a document"""
     # Validate file type
     file_ext = os.path.splitext(file.filename)[1].lower()
     allowed_types = [".pdf", ".docx", ".txt", ".md"]
-    
+
     if file_ext not in allowed_types:
         raise HTTPException(400, f"Unsupported file type. Allowed: {allowed_types}")
-    
-    if not api_key:
-        raise HTTPException(400, "OpenAI API key required for embedding generation")
+
+    # Only require API key if not using local embedding
+    if not use_local_embedding and not api_key:
+        raise HTTPException(400, f"API key required for {provider} embedding generation")
     
     try:
         # Read file content
@@ -55,8 +59,10 @@ async def upload_document(
         
         # Generate embeddings and save chunks
         if chunks:
-            embeddings = await embedding_service.get_embeddings(chunks, api_key)
-            
+            embeddings = await embedding_service.get_embeddings(
+                chunks, api_key, provider, base_url if base_url else None, use_local_embedding
+            )
+
             for i, (chunk_text, embedding) in enumerate(zip(chunks, embeddings)):
                 chunk = DocumentChunk(
                     document_id=document.id,
@@ -155,15 +161,19 @@ async def delete_document(
 async def search_documents(
     query: str,
     api_key: str = "",
+    provider: str = "openai",
+    base_url: str = "",
     limit: int = 5,
     session: AsyncSession = Depends(get_session)
 ):
     """Search for relevant document chunks"""
     if not api_key:
         raise HTTPException(400, "API key required")
-    
-    chunks = await rag_service.search_similar(query, api_key, session, limit)
-    
+
+    chunks = await rag_service.search_similar(
+        query, api_key, session, limit, provider, base_url if base_url else None
+    )
+
     return [
         {
             "id": str(chunk.id),

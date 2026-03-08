@@ -16,19 +16,23 @@ router = APIRouter(prefix="/api/memories", tags=["memories"])
 async def create_memory(
     data: MemoryCreate,
     api_key: str = "",
+    provider: str = "openai",
+    base_url: str = "",
     session: AsyncSession = Depends(get_session)
 ):
     """Create a new memory manually"""
     if not api_key:
         raise HTTPException(400, "API key required for embedding generation")
-    
+
     memory = await memory_service.create_memory(
         content=data.content,
         api_key=api_key,
         session=session,
         category=data.category,
         importance=data.importance,
-        source="manual"
+        source="manual",
+        provider=provider,
+        base_url=base_url if base_url else None
     )
     
     return {
@@ -64,17 +68,19 @@ async def list_memories(
 async def search_memories(
     query: str,
     api_key: str = "",
+    provider: str = "openai",
+    base_url: str = "",
     limit: int = 5,
     session: AsyncSession = Depends(get_session)
 ):
     """Search memories by semantic similarity"""
     if not api_key:
         raise HTTPException(400, "API key required")
-    
+
     memories = await memory_service.search_relevant_memories(
-        query, api_key, session, limit
+        query, api_key, session, limit, provider, base_url if base_url else None
     )
-    
+
     return [
         {
             "id": str(m.id),

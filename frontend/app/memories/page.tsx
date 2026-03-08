@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { useSettingsStore } from "@/stores/settings";
+import { useSettingsStore, SUPPORTED_MODELS } from "@/stores/settings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -51,7 +51,14 @@ export default function MemoriesPage() {
     category: "fact",
     importance: 5,
   });
-  const { openaiApiKey } = useSettingsStore();
+  const { apiKeys, openaiApiKey, model, baseUrls } = useSettingsStore();
+
+  // Get current model's provider and API key
+  const currentModel = SUPPORTED_MODELS.find((m) => m.id === model);
+  const provider = currentModel?.provider || "openai";
+  const apiKey =
+    apiKeys[provider] || (provider === "openai" ? openaiApiKey : "") || "";
+  const baseUrl = baseUrls[provider] || "";
 
   const fetchMemories = useCallback(async () => {
     try {
@@ -72,11 +79,25 @@ export default function MemoriesPage() {
   }, [fetchMemories]);
 
   const handleAddMemory = async () => {
-    if (!newMemory.content.trim() || !openaiApiKey) return;
+    if (!newMemory.content.trim()) {
+      alert("请输入记忆内容");
+      return;
+    }
+    if (!apiKey) {
+      alert(
+        `请在设置中配置 ${currentModel?.provider || "当前模型"} 的 API 密钥`,
+      );
+      return;
+    }
 
     try {
+      const params = new URLSearchParams();
+      params.append("api_key", apiKey);
+      params.append("provider", provider);
+      if (baseUrl) params.append("base_url", baseUrl);
+
       const response = await fetch(
-        `${API_BASE_URL}/api/memories/?api_key=${openaiApiKey}`,
+        `${API_BASE_URL}/api/memories/?${params.toString()}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -115,12 +136,27 @@ export default function MemoriesPage() {
   };
 
   const handleSearch = async () => {
-    if (!searchQuery.trim() || !openaiApiKey) return;
+    if (!searchQuery.trim()) {
+      alert("请输入搜索内容");
+      return;
+    }
+    if (!apiKey) {
+      alert(
+        `请在设置中配置 ${currentModel?.provider || "当前模型"} 的 API 密钥`,
+      );
+      return;
+    }
 
     setIsLoading(true);
     try {
+      const params = new URLSearchParams();
+      params.append("query", searchQuery);
+      params.append("api_key", apiKey);
+      params.append("provider", provider);
+      if (baseUrl) params.append("base_url", baseUrl);
+
       const response = await fetch(
-        `${API_BASE_URL}/api/memories/search?query=${encodeURIComponent(searchQuery)}&api_key=${openaiApiKey}`,
+        `${API_BASE_URL}/api/memories/search?${params.toString()}`,
       );
       if (response.ok) {
         const data = await response.json();

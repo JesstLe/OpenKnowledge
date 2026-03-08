@@ -14,11 +14,13 @@ class MemoryService:
         session: AsyncSession,
         category: str = "fact",
         importance: int = 5,
-        source: str = ""
+        source: str = "",
+        provider: str = "openai",
+        base_url: str = None
     ) -> Memory:
         """Create a new memory with embedding"""
-        embedding = await embedding_service.get_single_embedding(content, api_key)
-        
+        embedding = await embedding_service.get_single_embedding(content, api_key, provider, base_url)
+
         memory = Memory(
             content=content,
             category=category,
@@ -35,15 +37,17 @@ class MemoryService:
         self,
         conversation_text: str,
         api_key: str,
-        session: AsyncSession
+        session: AsyncSession,
+        provider: str = "openai",
+        base_url: str = None
     ) -> List[Memory]:
         """Extract important information from conversation"""
         from langchain_openai import ChatOpenAI
         from langchain_core.messages import HumanMessage, SystemMessage
         import json
-        
+
         llm = ChatOpenAI(api_key=api_key, model="gpt-3.5-turbo", temperature=0.3)
-        
+
         system_prompt = """Extract important facts/preferences from conversation.
 Return JSON array: [{"content": "...", "category": "preference|fact|goal", "importance": 1-10}]"""
 
@@ -51,17 +55,17 @@ Return JSON array: [{"content": "...", "category": "preference|fact|goal", "impo
             SystemMessage(content=system_prompt),
             HumanMessage(content=f"Conversation:\n{conversation_text}")
         ]
-        
+
         try:
             response = await llm.ainvoke(messages)
             content = response.content.strip()
             if content.startswith("```json"):
                 content = content[7:-3].strip()
-            
+
             memories_data = json.loads(content)
             if not isinstance(memories_data, list):
                 return []
-            
+
             created_memories = []
             for mem_data in memories_data:
                 memory = await self.create_memory(
@@ -70,10 +74,12 @@ Return JSON array: [{"content": "...", "category": "preference|fact|goal", "impo
                     session=session,
                     category=mem_data.get("category", "fact"),
                     importance=mem_data.get("importance", 5),
-                    source="extracted from conversation"
+                    source="extracted from conversation",
+                    provider=provider,
+                    base_url=base_url
                 )
                 created_memories.append(memory)
-            
+
             return created_memories
         except Exception as e:
             print(f"Error extracting memories: {e}")
@@ -84,31 +90,35 @@ Return JSON array: [{"content": "...", "category": "preference|fact|goal", "impo
         query: str,
         api_key: str,
         session: AsyncSession,
-        limit: int = 5
+        limit: int = 5,
+        provider: str = "openai",
+        base_url: str = None
     ) -> List[Memory]:
         """Search for relevant memories"""
-        query_embedding = await embedding_service.get_single_embedding(query, api_key)
-        
+        query_embedding = await embedding_service.get_single_embedding(query, api_key, provider, base_url)
+
         result = await session.execute(
             select(Memory)
             .order_by(Memory.embedding.cosine_distance(query_embedding))
             .limit(limit)
         )
-        
+
         return result.scalars().all()
-    
+
     async def get_memory_context(
         self,
         query: str,
         api_key: str,
         session: AsyncSession,
-        limit: int = 5
+        limit: int = 5,
+        provider: str = "openai",
+        base_url: str = None
     ) -> str:
         """Get memory context for LLM prompt"""
-        memories = await self.search_relevant_memories(query, api_key, session, limit)
+        memories = await self.search_relevant_memories(query, api_key, session, limit, provider, base_url)
         if not memories:
             return ""
-        
+
         context_parts = [f"- {m.content}" for m in memories]
         return "Relevant information:\n" + "\n".join(context_parts)
     
