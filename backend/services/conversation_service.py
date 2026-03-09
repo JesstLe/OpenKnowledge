@@ -94,6 +94,23 @@ class ConversationService:
         )
         return result.scalars().all()
 
+    async def get_recent_messages(
+        self,
+        session: AsyncSession,
+        conversation_id: str,
+        limit: int = 10
+    ) -> List[Message]:
+        """获取最近的消息（用于记忆提取）"""
+        result = await session.execute(
+            select(Message)
+            .where(Message.conversation_id == conversation_id)
+            .order_by(Message.created_at.desc())
+            .limit(limit)
+        )
+        # 返回正序排列的消息
+        messages = result.scalars().all()
+        return list(reversed(messages))
+
     async def add_message(
         self,
         session: AsyncSession,

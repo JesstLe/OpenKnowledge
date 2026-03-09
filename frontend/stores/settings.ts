@@ -317,12 +317,20 @@ interface SettingsStore {
   baseUrls: { [provider: string]: string };
   selectedProvider: string;
 
+  // Feature toggles (persisted)
+  useRAG: boolean;
+  useMemory: boolean;
+  useLocalEmbedding: boolean;
+
   // Actions
   setOpenaiApiKey: (key: string) => void;
   setModel: (model: string) => void;
   setApiKey: (provider: string, key: string) => void;
   setBaseUrl: (provider: string, url: string) => void;
   setSelectedProvider: (provider: string) => void;
+  setUseRAG: (value: boolean) => void;
+  setUseMemory: (value: boolean) => void;
+  setUseLocalEmbedding: (value: boolean) => void;
   getEffectiveApiKey: () => string;
 }
 
@@ -338,6 +346,11 @@ export const useSettingsStore = create<SettingsStore>()(
       baseUrls: {},
       selectedProvider: "openai",
 
+      // Feature toggles
+      useRAG: false,
+      useMemory: false,
+      useLocalEmbedding: false,
+
       setOpenaiApiKey: (key) => set({ openaiApiKey: key }),
       setModel: (model) => set({ model }),
       setApiKey: (provider, key) =>
@@ -349,6 +362,9 @@ export const useSettingsStore = create<SettingsStore>()(
           baseUrls: { ...state.baseUrls, [provider]: url },
         })),
       setSelectedProvider: (provider) => set({ selectedProvider: provider }),
+      setUseRAG: (value) => set({ useRAG: value }),
+      setUseMemory: (value) => set({ useMemory: value }),
+      setUseLocalEmbedding: (value) => set({ useLocalEmbedding: value }),
       getEffectiveApiKey: () => {
         const state = get();
         const provider = state.selectedProvider;

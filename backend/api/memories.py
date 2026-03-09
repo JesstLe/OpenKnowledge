@@ -3,14 +3,60 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List, Optional
 from datetime import datetime
+from pydantic import BaseModel
 
 from core.database import get_session
-from models.database import Memory
+from models.database import Memory, MemorySetting
 from models.schemas import MemoryCreate, MemoryUpdate, MemoryResponse
 from services.memory_service import memory_service
 from services.embedding_service import embedding_service
 
 router = APIRouter(prefix="/api/memories", tags=["memories"])
+
+
+class MemorySettingsRequest(BaseModel):
+    auto_extract: bool = True
+    whitelist_topics: List[str] = []
+    blacklist_topics: List[str] = []
+    min_importance: int = 5
+
+
+async def get_memory_settings_from_db(session: AsyncSession) -> dict:
+    """Get memory settings from database"""
+    result = await session.execute(select(MemorySetting))
+    settings = {s.key: s.value for s in result.scalars().all()}
+
+    return {
+        "auto_extract": settings.get("auto_extract", "true").lower() == "true",
+        "whitelist_topics": settings.get("whitelist_topics", "").split(",") if settings.get("whitelist_topics") else [],
+        "blacklist_topics": settings.get("blacklist_topics", "").split(",") if settings.get("blacklist_topics") else [],
+        "min_importance": int(settings.get("min_importance", "5"))
+    }
+
+
+async def save_memory_settings_to_db(session: AsyncSession, settings: dict):
+    """Save memory settings to database"""
+    settings_map = {
+        "auto_extract": str(settings.get("auto_extract", True)).lower(),
+        "whitelist_topics": ",".join(settings.get("whitelist_topics", [])),
+        "blacklist_topics": ",".join(settings.get("blacklist_topics", [])),
+        "min_importance": str(settings.get("min_importance", 5))
+    }
+
+    for key, value in settings_map.items():
+        result = await session.execute(
+            select(MemorySetting).where(MemorySetting.key == key)
+        )
+        setting = result.scalar_one_or_none()
+
+        if setting:
+            setting.value = value
+            setting.updated_at = datetime.utcnow()
+        else:
+            setting = MemorySetting(key=key, value=value)
+            session.add(setting)
+
+    await session.commit()
 
 @router.post("/")
 async def create_memory(
@@ -134,11 +180,11 @@ async def extract_memories(
     """Extract memories from conversation text"""
     if not api_key:
         raise HTTPException(400, "API key required")
-    
+
     memories = await memory_service.extract_memories_from_conversation(
         conversation_text, api_key, session
     )
-    
+
     return [
         {
             "id": str(m.id),
@@ -148,3 +194,51 @@ async def extract_memories(
         }
         for m in memories
     ]
+
+
+@router.get("/settings")
+async def get_memory_settings(
+    session: AsyncSession = Depends(get_session)
+):
+    """Get memory extraction settings"""
+    settings = await get_memory_settings_from_db(session)
+    return settings
+
+
+@router.post("/settings")
+async def update_memory_settings(
+    request: MemorySettingsRequest,
+    session: AsyncSession = Depends(get_session)
+):
+    """Update memory extraction settings"""
+    settings = {
+        "auto_extract": request.auto_extract,
+        "whitelist_topics": request.whitelist_topics,
+        "blacklist_topics": request.blacklist_topics,
+        "min_importance": request.min_importance
+    }
+    await save_memory_settings_to_db(session, settings)
+    return {"success": True, "settings": settings}
+
+
+@router.get("/settings/check-topic")
+async def check_topic_allowed(
+    topic: str,
+    session: AsyncSession = Depends(get_session)
+):
+    """Check if a topic is allowed based on whitelist/blacklist"""
+    settings = await get_memory_settings_from_db(session)
+
+    # Check blacklist first
+    for blacklisted in settings["blacklist_topics"]:
+        if blacklisted.lower() in topic.lower():
+            return {"allowed": False, "reason": f"Topic matches blacklist: {blacklisted}"}
+
+    # If whitelist exists, topic must match at least one
+    if settings["whitelist_topics"]:
+        for whitelisted in settings["whitelist_topics"]:
+            if whitelisted.lower() in topic.lower():
+                return {"allowed": True}
+        return {"allowed": False, "reason": "Topic does not match any whitelist entry"}
+
+    return {"allowed": True}

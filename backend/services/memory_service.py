@@ -44,7 +44,17 @@ class MemoryService:
         """Extract important information from conversation"""
         from langchain_openai import ChatOpenAI
         from langchain_core.messages import HumanMessage, SystemMessage
+        from sqlalchemy import select
         import json
+
+        # Check memory settings
+        from api.memories import get_memory_settings_from_db
+        settings = await get_memory_settings_from_db(session)
+
+        # If auto-extract is disabled, skip extraction
+        if not settings.get("auto_extract", True):
+            print("[Memory] Auto-extract is disabled, skipping extraction")
+            return []
 
         llm = ChatOpenAI(api_key=api_key, model="gpt-3.5-turbo", temperature=0.3)
 
@@ -67,13 +77,38 @@ Return JSON array: [{"content": "...", "category": "preference|fact|goal", "impo
                 return []
 
             created_memories = []
+            min_importance = settings.get("min_importance", 5)
+            whitelist = settings.get("whitelist_topics", [])
+            blacklist = settings.get("blacklist_topics", [])
+
             for mem_data in memories_data:
+                importance = mem_data.get("importance", 5)
+                memory_content = mem_data.get("content", "")
+
+                # Check minimum importance threshold
+                if importance < min_importance:
+                    print(f"[Memory] Skipping low importance memory: {memory_content[:50]}...")
+                    continue
+
+                # Check blacklist
+                is_blacklisted = any(b.lower() in memory_content.lower() for b in blacklist if b)
+                if is_blacklisted:
+                    print(f"[Memory] Skipping blacklisted topic: {memory_content[:50]}...")
+                    continue
+
+                # Check whitelist (if defined)
+                if whitelist and any(w for w in whitelist if w):
+                    is_whitelisted = any(w.lower() in memory_content.lower() for w in whitelist if w)
+                    if not is_whitelisted:
+                        print(f"[Memory] Skipping non-whitelisted topic: {memory_content[:50]}...")
+                        continue
+
                 memory = await self.create_memory(
-                    content=mem_data["content"],
+                    content=memory_content,
                     api_key=api_key,
                     session=session,
                     category=mem_data.get("category", "fact"),
-                    importance=mem_data.get("importance", 5),
+                    importance=importance,
                     source="extracted from conversation",
                     provider=provider,
                     base_url=base_url

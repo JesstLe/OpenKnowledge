@@ -72,3 +72,13 @@ class Memory(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     access_count = Column(Integer, default=0)
     last_accessed = Column(DateTime)
+
+
+class MemorySetting(Base):
+    __tablename__ = "memory_settings"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    key = Column(String(100), unique=True, nullable=False)
+    value = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

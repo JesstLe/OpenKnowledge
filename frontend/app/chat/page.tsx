@@ -24,6 +24,10 @@ import {
   MessageSquare,
   ChevronDown,
   Check,
+  Copy,
+  RotateCcw,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react";
 import {
   Select,
@@ -53,18 +57,31 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [useRAG, setUseRAG] = useState(false);
-  const [useMemory, setUseMemory] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [filteredConversations, setFilteredConversations] = useState<
+    Conversation[]
+  >([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
   const [currentConversationId, setCurrentConversationId] = useState<
     string | null
   >(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const { model, setModel, setSelectedProvider, getEffectiveApiKey, baseUrls } =
-    useSettingsStore();
+  const {
+    model,
+    setModel,
+    setSelectedProvider,
+    getEffectiveApiKey,
+    baseUrls,
+    useRAG,
+    useMemory,
+    setUseRAG,
+    setUseMemory,
+  } = useSettingsStore();
   const apiKey = getEffectiveApiKey();
   const currentModel = SUPPORTED_MODELS.find((m) => m.id === model);
   const currentProvider = PROVIDERS.find(
@@ -82,10 +99,47 @@ export default function ChatPage() {
       if (response.ok) {
         const data = await response.json();
         setConversations(data);
+        setFilteredConversations(data);
       }
     } catch (error) {
       console.error("Failed to fetch conversations:", error);
     }
+  };
+
+  // Search conversations
+  const handleSearchConversations = async () => {
+    if (!searchQuery.trim()) {
+      setFilteredConversations(conversations);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const params = new URLSearchParams();
+      params.append("q", searchQuery);
+      const response = await fetch(
+        `${API_BASE_URL}/api/conversations/search?${params.toString()}`,
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setFilteredConversations(data);
+      }
+    } catch (error) {
+      console.error("Failed to search conversations:", error);
+      // Fallback to client-side filtering
+      const filtered = conversations.filter((c) =>
+        c.title.toLowerCase().includes(searchQuery.toLowerCase()),
+      );
+      setFilteredConversations(filtered);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Clear search
+  const clearSearch = () => {
+    setSearchQuery("");
+    setFilteredConversations(conversations);
   };
 
   const createNewConversation = async () => {
@@ -235,10 +289,10 @@ export default function ChatPage() {
         body: JSON.stringify(
           useRAG
             ? {
-              ...requestBody,
-              use_rag: useRAG,
-              use_memory: useMemory,
-            }
+                ...requestBody,
+                use_rag: useRAG,
+                use_memory: useMemory,
+              }
             : requestBody,
         ),
       });
@@ -319,12 +373,49 @@ export default function ChatPage() {
     setCurrentConversationId(null);
   };
 
+  const handleCopyMessage = async (content: string, messageId: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedId(messageId);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch (error) {
+      console.error("Failed to copy:", error);
+    }
+  };
+
+  const handleRegenerate = async () => {
+    // Find last user message
+    const lastUserIndex = [...messages]
+      .reverse()
+      .findIndex((m) => m.role === "user");
+    if (lastUserIndex === -1) return;
+
+    const lastUserMsg = messages[messages.length - 1 - lastUserIndex];
+
+    // Remove the last assistant message if exists
+    const lastMsg = messages[messages.length - 1];
+    if (lastMsg?.role === "assistant") {
+      setMessages((prev) => prev.slice(0, -1));
+    }
+
+    // Trigger a new send with the last user message
+    setInput(lastUserMsg.content);
+    // Use setTimeout to ensure the input state is updated before sending
+    setTimeout(() => {
+      const sendButton = document.querySelector(
+        '[data-send-button="true"]',
+      ) as HTMLButtonElement;
+      sendButton?.click();
+    }, 0);
+  };
+
   return (
     <div className="flex h-screen bg-background">
       {/* Sidebar */}
       <aside
-        className={`${sidebarOpen ? "w-72" : "w-0"
-          } bg-[#f9f9f9] dark:bg-[#0d0d0d] border-r border-gray-200 dark:border-gray-800 transition-all duration-300 overflow-hidden flex flex-col`}
+        className={`${
+          sidebarOpen ? "w-72" : "w-0"
+        } bg-[#f9f9f9] dark:bg-[#0d0d0d] border-r border-gray-200 dark:border-gray-800 transition-all duration-300 overflow-hidden flex flex-col`}
       >
         {/* New Chat Button */}
         <div className="p-4">
@@ -341,10 +432,32 @@ export default function ChatPage() {
         <nav className="flex-1 overflow-y-auto px-3">
           {/* Search */}
           <div className="px-1 py-1">
-            <button className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-200 transition-all cursor-pointer w-full">
-              <Search className="h-4 w-4" />
-              搜索聊天
-            </button>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="搜索对话..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    handleSearchConversations();
+                  }
+                }}
+                className="w-full pl-9 pr-8 py-2 rounded-lg text-sm bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-200 placeholder:text-gray-400 focus:outline-none focus:border-gray-300 dark:focus:border-gray-700"
+              />
+              {searchQuery && (
+                <button
+                  onClick={clearSearch}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded"
+                >
+                  <X className="h-3 w-3 text-gray-400" />
+                </button>
+              )}
+            </div>
+            {isSearching && (
+              <p className="text-xs text-gray-400 mt-1 px-3">搜索中...</p>
+            )}
           </div>
 
           {/* Features */}
@@ -380,10 +493,11 @@ export default function ChatPage() {
             <div className="space-y-0.5">
               <button
                 onClick={() => setUseRAG(!useRAG)}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all cursor-pointer w-full ${useRAG
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all cursor-pointer w-full ${
+                  useRAG
                     ? "bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400"
                     : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
-                  }`}
+                }`}
               >
                 <BookOpen className="h-4 w-4" />
                 <span className="flex-1 text-left">知识库 RAG</span>
@@ -393,10 +507,11 @@ export default function ChatPage() {
               </button>
               <button
                 onClick={() => setUseMemory(!useMemory)}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all cursor-pointer w-full ${useMemory
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all cursor-pointer w-full ${
+                  useMemory
                     ? "bg-purple-50 dark:bg-purple-950/30 text-purple-600 dark:text-purple-400"
                     : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
-                  }`}
+                }`}
               >
                 <Brain className="h-4 w-4" />
                 <span className="flex-1 text-left">长期记忆</span>
@@ -410,30 +525,39 @@ export default function ChatPage() {
           {/* Recent Chats */}
           <div className="mt-6 px-1">
             <p className="text-xs font-medium text-gray-400 uppercase tracking-wider mb-2 px-3">
-              最近对话 ({conversations.length})
+              {searchQuery
+                ? `搜索结果 (${filteredConversations.length})`
+                : `最近对话 (${conversations.length})`}
             </p>
             <div className="space-y-0.5 max-h-[280px] overflow-y-auto">
-              {conversations.map((chat) => (
-                <button
-                  key={chat.id}
-                  onClick={() => loadConversation(chat.id)}
-                  className={`flex items-start gap-3 px-3 py-2.5 rounded-lg text-sm transition-all cursor-pointer w-full text-left group ${currentConversationId === chat.id
-                      ? "bg-white dark:bg-gray-800 shadow-sm border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100"
-                      : "text-gray-600 dark:text-gray-400 hover:bg-gray-100/80 dark:hover:bg-gray-800/50"
+              {filteredConversations.length === 0 && searchQuery ? (
+                <p className="text-sm text-gray-400 px-3 py-2">
+                  未找到匹配对话
+                </p>
+              ) : (
+                filteredConversations.map((chat) => (
+                  <button
+                    key={chat.id}
+                    onClick={() => loadConversation(chat.id)}
+                    className={`flex items-start gap-3 px-3 py-2.5 rounded-lg text-sm transition-all cursor-pointer w-full text-left group ${
+                      currentConversationId === chat.id
+                        ? "bg-white dark:bg-gray-800 shadow-sm border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-gray-100"
+                        : "text-gray-600 dark:text-gray-400 hover:bg-gray-100/80 dark:hover:bg-gray-800/50"
                     }`}
-                >
-                  <MessageSquare className="h-4 w-4 shrink-0 mt-0.5 text-gray-400" />
-                  <div className="flex-1 min-w-0">
-                    <span className="truncate block font-medium">
-                      {chat.title}
-                    </span>
-                    <span className="text-xs text-gray-400">
-                      {formatDate(chat.updated_at)} · {chat.message_count}{" "}
-                      条消息
-                    </span>
-                  </div>
-                </button>
-              ))}
+                  >
+                    <MessageSquare className="h-4 w-4 shrink-0 mt-0.5 text-gray-400" />
+                    <div className="flex-1 min-w-0">
+                      <span className="truncate block font-medium">
+                        {chat.title}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {formatDate(chat.updated_at)} · {chat.message_count}{" "}
+                        条消息
+                      </span>
+                    </div>
+                  </button>
+                ))
+              )}
             </div>
           </div>
         </nav>
@@ -552,34 +676,67 @@ export default function ChatPage() {
               {messages.map((message) => (
                 <div
                   key={message.id}
-                  className={`flex gap-4 ${message.role === "user" ? "flex-row-reverse" : ""
-                    }`}
+                  className={`flex gap-4 group ${
+                    message.role === "user" ? "flex-row-reverse" : ""
+                  }`}
                 >
                   {/* Avatar */}
                   <div
-                    className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium ${message.role === "user"
+                    className={`shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium ${
+                      message.role === "user"
                         ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900"
                         : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700"
-                      }`}
+                    }`}
                   >
                     {message.role === "user" ? "U" : "AI"}
                   </div>
 
                   {/* Content */}
                   <div
-                    className={`flex-1 ${message.role === "user" ? "text-right" : ""
-                      }`}
+                    className={`flex-1 ${
+                      message.role === "user" ? "text-right" : ""
+                    }`}
                   >
                     <div
-                      className={`inline-block text-left max-w-[85%] px-4 py-3 rounded-2xl ${message.role === "user"
+                      className={`inline-block text-left max-w-[85%] px-4 py-3 rounded-2xl ${
+                        message.role === "user"
                           ? "bg-gray-900 dark:bg-blue-600 text-white rounded-br-md"
                           : "bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-100 dark:border-gray-700 rounded-bl-md shadow-sm"
-                        }`}
+                      }`}
                     >
                       <p className="whitespace-pre-wrap leading-relaxed">
                         {message.content}
                       </p>
                     </div>
+
+                    {/* Message Actions - Only for assistant messages */}
+                    {message.role === "assistant" && (
+                      <div className="flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() =>
+                            handleCopyMessage(message.content, message.id)
+                          }
+                          className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors text-gray-400 hover:text-gray-600"
+                          title="复制内容"
+                        >
+                          {copiedId === message.id ? (
+                            <Check className="h-3.5 w-3.5 text-green-500" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                        {messages[messages.length - 1].id === message.id &&
+                          !isLoading && (
+                            <button
+                              onClick={handleRegenerate}
+                              className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors text-gray-400 hover:text-gray-600"
+                              title="重新生成"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -665,12 +822,14 @@ export default function ChatPage() {
               {/* Send Button */}
               <div className="flex justify-end px-3 pb-3">
                 <button
+                  data-send-button="true"
                   onClick={handleSend}
                   disabled={!input.trim() || isLoading}
-                  className={`p-2.5 rounded-xl transition-all ${input.trim() && !isLoading
+                  className={`p-2.5 rounded-xl transition-all ${
+                    input.trim() && !isLoading
                       ? "bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:opacity-90"
                       : "bg-gray-100 dark:bg-gray-800 text-gray-400"
-                    }`}
+                  }`}
                 >
                   <ArrowUp className="h-4 w-4" />
                 </button>

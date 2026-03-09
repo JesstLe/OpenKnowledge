@@ -42,6 +42,7 @@ class RAGChatRequest(BaseModel):
     history: Optional[List[ChatMessage]] = None
     use_rag: bool = True
     use_memory: bool = True
+    use_tools: bool = False
     conversationId: Optional[str] = None
     apiKey: str
     model: str = "gpt-5-mini"

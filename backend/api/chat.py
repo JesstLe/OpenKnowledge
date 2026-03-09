@@ -6,10 +6,54 @@ import traceback
 from models.schemas import ChatRequest, RAGChatRequest
 from services.llm_service import llm_service
 from services.conversation_service import conversation_service
-from core.database import get_session
+from services.memory_service import memory_service
+from services.tools_service import tools_service
+from core.database import get_session, async_session_maker
 import uuid
+import asyncio
 
 router = APIRouter(prefix="/api", tags=["chat"])
+
+
+async def _extract_memories_background(
+    conversation_id: str,
+    api_key: str,
+    provider: str = "openai",
+    base_url: str = None
+):
+    """Background task to extract memories from conversation"""
+    try:
+        async with async_session_maker() as session:
+            # Get recent conversation messages
+            messages = await conversation_service.get_recent_messages(
+                session=session,
+                conversation_id=conversation_id,
+                limit=10  # Last 10 messages
+            )
+
+            if len(messages) < 2:  # Need at least user + assistant
+                return
+
+            # Format conversation text
+            conversation_text = "\n".join([
+                f"{'User' if m.role == 'user' else 'Assistant'}: {m.content}"
+                for m in messages
+            ])
+
+            # Extract memories
+            extracted = await memory_service.extract_memories_from_conversation(
+                conversation_text=conversation_text,
+                api_key=api_key,
+                session=session,
+                provider=provider,
+                base_url=base_url
+            )
+
+            if extracted:
+                print(f"[Auto Memory] Extracted {len(extracted)} memories from conversation {conversation_id}")
+
+    except Exception as e:
+        print(f"[Auto Memory Error] {type(e).__name__}: {e}")
 
 
 @router.post("/chat")
@@ -118,6 +162,7 @@ async def chat_with_rag(
                 model=request.model,
                 use_rag=request.use_rag,
                 use_memory=request.use_memory,
+                use_tools=request.use_tools,
                 base_url=request.baseUrl,
                 session=session,
                 history=optimized_context
@@ -141,12 +186,22 @@ async def chat_with_rag(
                     conversation_id=request.conversationId
                 )
                 if should_summary:
-                    import asyncio
                     asyncio.create_task(
                         conversation_service.generate_summary(
                             session=session,
                             conversation_id=request.conversationId,
                             api_key=request.apiKey
+                        )
+                    )
+
+                # 自动提取记忆（当开启记忆功能时）
+                if request.use_memory:
+                    asyncio.create_task(
+                        _extract_memories_background(
+                            conversation_id=request.conversationId,
+                            api_key=request.apiKey,
+                            provider=request.model.split("-")[0] if "-" in request.model else "openai",
+                            base_url=request.baseUrl
                         )
                     )
 
@@ -156,3 +211,18 @@ async def chat_with_rag(
             yield f"[ERROR]{str(e)}"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@router.get("/tools")
+async def list_tools():
+    """List available tools for agent"""
+    return {
+        "tools": [
+            {
+                "name": tool.name,
+                "description": tool.description,
+                "parameters": tool.parameters
+            }
+            for tool in tools_service.tools.values()
+        ]
+    }

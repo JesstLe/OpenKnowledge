@@ -5,6 +5,7 @@ from pydantic import SecretStr
 
 from services.rag_service import rag_service
 from services.memory_service import memory_service
+from services.tools_service import tools_service
 
 litellm = import_module("litellm")
 acompletion = getattr(litellm, "acompletion")
@@ -135,6 +136,7 @@ class LLMService:
         model: str = "gpt-5-mini",
         use_rag: bool = False,
         use_memory: bool = False,
+        use_tools: bool = False,
         base_url: Optional[str] = None,
         session: Optional[AsyncSession] = None,
         history: Optional[List[dict]] = None,
@@ -212,16 +214,93 @@ class LLMService:
         elif provider in PROVIDER_BASE_URLS:
             kwargs["api_base"] = PROVIDER_BASE_URLS[provider]
 
-
+        # Add tools if enabled
+        if use_tools:
+            kwargs["tools"] = tools_service.get_tools()
+            kwargs["tool_choice"] = "auto"
 
         try:
             response = await acompletion(**kwargs)
 
+            # Track if we're in a tool call
+            current_tool_call = None
+            tool_call_buffer = ""
+            full_response = ""
+
             async for chunk in response:
-                if chunk.choices and chunk.choices[0].delta:
-                    content = _to_text(chunk.choices[0].delta.content)
-                    if content:
-                        yield content
+                if not chunk.choices:
+                    continue
+
+                delta = chunk.choices[0].delta
+
+                # Handle tool calls
+                if delta.tool_calls:
+                    tool_call = delta.tool_calls[0]
+                    if tool_call.function:
+                        if tool_call.function.name:
+                            current_tool_call = {
+                                "name": tool_call.function.name,
+                                "arguments": ""
+                            }
+                        if tool_call.function.arguments:
+                            if current_tool_call:
+                                current_tool_call["arguments"] += tool_call.function.arguments
+                    continue
+
+                # Handle regular content
+                content = _to_text(delta.content)
+                if content:
+                    full_response += content
+                    yield content
+
+            # If we have a tool call, execute it and continue
+            if current_tool_call:
+                yield f"\n\n[使用工具: {current_tool_call['name']}]\n"
+
+                try:
+                    import json
+                    args = json.loads(current_tool_call["arguments"])
+                    result = await tools_service.execute_tool(
+                        current_tool_call["name"],
+                        args
+                    )
+
+                    yield f"[工具结果]\n"
+
+                    # Add tool result to messages and get final response
+                    messages.append({
+                        "role": "assistant",
+                        "content": full_response or None,
+                        "tool_calls": [{
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {
+                                "name": current_tool_call["name"],
+                                "arguments": current_tool_call["arguments"]
+                            }
+                        }]
+                    })
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": "call_1",
+                        "content": result
+                    })
+
+                    # Get final response with tool result
+                    kwargs["messages"] = messages
+                    kwargs.pop("tools", None)
+                    kwargs.pop("tool_choice", None)
+
+                    final_response = await acompletion(**kwargs)
+                    async for final_chunk in final_response:
+                        if final_chunk.choices and final_chunk.choices[0].delta:
+                            final_content = _to_text(final_chunk.choices[0].delta.content)
+                            if final_content:
+                                yield final_content
+
+                except Exception as tool_error:
+                    yield f"\n[工具执行出错: {str(tool_error)}]\n"
+
         except Exception as e:
             # Fallback to direct OpenAI for OpenAI models
             if provider == "openai":
