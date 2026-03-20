@@ -152,6 +152,264 @@ OpenKnowledge/
 
 ## 🏗️ 核心架构
 
+### 系统架构图
+
+```mermaid
+graph TB
+    subgraph Frontend["🎨 前端层 (Next.js 16)"]
+        UI[用户界面]
+        State[Zustand 状态管理]
+        API_Client[API 客户端]
+    end
+
+    subgraph Backend["⚙️ 后端层 (FastAPI)"]
+        Router[API 路由]
+        Auth[认证中间件]
+        
+        subgraph Services["业务服务层"]
+            ChatService[对话服务]
+            DocService[文档服务]
+            RAGService[RAG 检索服务]
+            MemoryService[记忆服务]
+            LLMGateway[LLM 网关]
+        end
+    end
+
+    subgraph DataLayer["💾 数据层"]
+        PG[(PostgreSQL)]
+        VectorDB[(pgvector<br/>向量数据库)]
+        FileStore[文件存储]
+    end
+
+    subgraph External["🌐 外部服务"]
+        OpenAI[OpenAI API]
+        Claude[Claude API]
+        Ollama[Ollama 本地模型]
+        Qwen[通义千问 API]
+    end
+
+    UI --> State
+    State --> API_Client
+    API_Client --> Router
+    Router --> Auth
+    Auth --> Services
+    
+    ChatService --> LLMGateway
+    RAGService --> VectorDB
+    DocService --> FileStore
+    MemoryService --> PG
+    
+    LLMGateway --> OpenAI
+    LLMGateway --> Claude
+    LLMGateway --> Ollama
+    LLMGateway --> Qwen
+    
+    Services --> PG
+```
+
+### RAG 数据流图
+
+```mermaid
+sequenceDiagram
+    participant User as 用户
+    participant UI as 前端界面
+    participant API as FastAPI
+    participant RAG as RAG 引擎
+    participant Embed as 嵌入模型
+    participant Vector as 向量数据库
+    participant LLM as LLM 模型
+
+    User->>UI: 输入问题
+    UI->>API: POST /api/chat
+    API->>RAG: 检索相关知识
+    RAG->>Embed: 生成查询向量
+    Embed-->>RAG: 向量表示
+    RAG->>Vector: 语义相似度搜索
+    Vector-->>RAG: 相关文档块
+    RAG->>RAG: 上下文组装
+    RAG->>LLM: 发送 Prompt + 上下文
+    LLM-->>RAG: 生成回答
+    RAG-->>API: 返回结果
+    API-->>UI: 流式响应
+    UI-->>User: 显示答案
+```
+
+### 文档处理流程图
+
+```mermaid
+flowchart LR
+    A[用户上传文档] --> B{文件类型}
+    
+    B -->|PDF| C[PyPDF 提取文本]
+    B -->|Word| D[python-docx 解析]
+    B -->|Excel| E[pandas 读取]
+    B -->|图片| F[OCR 文字识别]
+    B -->|视频| G[语音识别]
+    
+    C --> H[文本分块]
+    D --> H
+    E --> H
+    F --> H
+    G --> H
+    
+    H --> I[生成嵌入向量]
+    I --> J[存储到 pgvector]
+    J --> K[建立语义索引]
+    
+    style A fill:#e1f5fe
+    style K fill:#c8e6c9
+```
+
+### 数据库 E-R 图
+
+```mermaid
+erDiagram
+    USER ||--o{ CONVERSATION : creates
+    USER ||--o{ DOCUMENT : uploads
+    USER ||--o{ MEMORY : owns
+    
+    CONVERSATION ||--o{ MESSAGE : contains
+    
+    DOCUMENT ||--o{ CHUNK : split_into
+    CHUNK }|--|| VECTOR : embedding
+    
+    MESSAGE ||--o{ CITATION : references
+    CHUNK ||--o{ CITATION : cited_by
+    
+    USER {
+        uuid id PK
+        string email
+        datetime created_at
+    }
+    
+    CONVERSATION {
+        uuid id PK
+        uuid user_id FK
+        string title
+        datetime created_at
+        datetime updated_at
+    }
+    
+    MESSAGE {
+        uuid id PK
+        uuid conversation_id FK
+        string role
+        text content
+        json metadata
+        datetime created_at
+    }
+    
+    DOCUMENT {
+        uuid id PK
+        uuid user_id FK
+        string filename
+        string file_type
+        int file_size
+        string status
+        datetime uploaded_at
+    }
+    
+    CHUNK {
+        uuid id PK
+        uuid document_id FK
+        text content
+        int chunk_index
+        int token_count
+    }
+    
+    VECTOR {
+        uuid chunk_id PK,FK
+        vector embedding
+    }
+    
+    MEMORY {
+        uuid id PK
+        uuid user_id FK
+        text content
+        string category
+        float importance
+        datetime created_at
+    }
+```
+
+### 部署架构图
+
+```mermaid
+graph TB
+    subgraph Client["客户端"]
+        Browser[浏览器]
+    end
+
+    subgraph DockerHost["Docker 主机"]
+        subgraph AppNetwork["应用网络"]
+            Frontend[前端容器<br/>Next.js :3000]
+            Backend[后端容器<br/>FastAPI :8000]
+            
+            subgraph DataStack["数据服务"]
+                Postgres[PostgreSQL<br/>:5432]
+                PGVector[pgvector 扩展]
+            end
+        end
+    end
+
+    subgraph ExternalAPIs["外部 API"]
+        OAI[OpenAI]
+        Anthropic[Claude]
+        LocalLLM[Ollama<br/>本地模型]
+    end
+
+    Browser -->|HTTP| Frontend
+    Frontend -->|API 请求| Backend
+    Backend -->|SQL| Postgres
+    Postgres -->|向量检索| PGVector
+    Backend -->|LLM 调用| OAI
+    Backend -->|LLM 调用| Anthropic
+    Backend -->|本地模型| LocalLLM
+
+    style Client fill:#e3f2fd
+    style DockerHost fill:#f3e5f5
+    style ExternalAPIs fill:#fff3e0
+```
+
+### API 调用时序图
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant F as Frontend
+    participant A as Auth
+    participant R as Router
+    participant S as Service
+    participant DB as Database
+    participant LLM as LLM Provider
+
+    C->>F: 1. 发起请求
+    F->>A: 2. 携带 Token
+    
+    alt Token 无效
+        A-->>F: 401 Unauthorized
+        F-->>C: 登录过期提示
+    else Token 有效
+        A->>R: 3. 通过认证
+        R->>S: 4. 调用服务
+        
+        alt 需要数据库
+            S->>DB: 5a. 查询/写入数据
+            DB-->>S: 数据结果
+        end
+        
+        alt 需要 LLM
+            S->>LLM: 5b. 调用 AI 接口
+            LLM-->>S: AI 响应
+        end
+        
+        S-->>R: 6. 业务结果
+        R-->>F: 7. HTTP Response
+        F-->>C: 8. 渲染界面
+    end
+```
+
 ### 1. LLM Gateway
 
 统一的 LLM API 封装层，支持多提供商切换（OpenAI/Claude/Qwen/Ollama）。
